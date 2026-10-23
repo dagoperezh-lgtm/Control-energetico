@@ -94,10 +94,20 @@ table.tabla { border-collapse: collapse; width: 100%; font-size: 13px; font-vari
 .tabla td.est { color: var(--muted); font-style: italic; }
 .tabla tr.grupo th { text-align: center; border-bottom: 0; color: var(--text); }
 
-.modal-fondo { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 40; display: flex; align-items: flex-end; justify-content: center; }
-.modal { background: var(--card); width: 100%; max-width: 640px; max-height: 92vh; overflow-y: auto; border-radius: 18px 18px 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
+.modal-fondo { position: fixed; left: 0; right: 0; top: var(--vvt, 0px); height: var(--vvh, 100dvh); background: rgba(0,0,0,.4); z-index: 40; display: flex; align-items: flex-end; justify-content: center; }
+.modal { background: var(--card); width: 100%; max-width: 640px; max-height: calc(var(--vvh, 100dvh) - 24px); overflow-y: auto; overscroll-behavior: contain;
+  border-radius: 18px 18px 0 0; padding: 0 16px calc(16px + env(safe-area-inset-bottom)); }
 @media (min-width: 700px) { .modal-fondo { align-items: center; } .modal { border-radius: 18px; } }
-.modal h2 { margin: 0 0 12px; font-size: 17px; display: flex; justify-content: space-between; align-items: center; }
+/* Título y buscador quedan fijos arriba mientras se desplazan los resultados */
+.modal h2 { margin: 0; padding: 14px 0 8px; height: 56px; box-sizing: border-box; font-size: 17px; display: flex; justify-content: space-between; align-items: center;
+  position: sticky; top: 0; background: var(--card); z-index: 3; }
+.modal-fijo { position: sticky; top: 56px; background: var(--card); z-index: 2; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.modal-fijo .tabs { margin-bottom: 8px; }
+.lista li.resultado { cursor: pointer; padding: 8px 0; }
+.lista li.resultado .nombre { line-height: 1.25; }
+.lista li.resultado .detalle { display: block; font-size: 12px; }
+/* iOS hace zoom en campos con letra menor a 16 px */
+input, select, textarea { font-size: 16px !important; }
 
 .aviso { background: var(--warn-soft); color: var(--warn); padding: 10px 12px; border-radius: 10px; font-size: 13px; margin-bottom: 12px; }
 .error { background: #fde8e6; color: #9c2a23; padding: 10px 12px; border-radius: 10px; font-size: 13px; margin-bottom: 12px; }

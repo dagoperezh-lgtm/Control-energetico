@@ -5,7 +5,20 @@ export function Modal({ titulo, onCerrar, children }: { titulo: string; onCerrar
     const k = (e: KeyboardEvent) => e.key === 'Escape' && onCerrar();
     window.addEventListener('keydown', k);
     document.body.style.overflow = 'hidden';
-    return () => { window.removeEventListener('keydown', k); document.body.style.overflow = ''; };
+    // Con el teclado abierto (iOS) el área visible se achica: la ventana se ajusta a ese alto real
+    const vv = window.visualViewport;
+    const ajustar = () => {
+      if (!vv) return;
+      document.documentElement.style.setProperty('--vvh', `${vv.height}px`);
+      document.documentElement.style.setProperty('--vvt', `${vv.offsetTop}px`);
+    };
+    ajustar();
+    vv?.addEventListener('resize', ajustar);
+    vv?.addEventListener('scroll', ajustar);
+    return () => {
+      window.removeEventListener('keydown', k); document.body.style.overflow = '';
+      vv?.removeEventListener('resize', ajustar); vv?.removeEventListener('scroll', ajustar);
+    };
   }, [onCerrar]);
   return (
     <div className="modal-fondo" onClick={onCerrar}>

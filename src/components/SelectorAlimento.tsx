@@ -9,6 +9,7 @@ import { n } from '../lib/formato';
 import { PORCION_BASE } from '../lib/porciones';
 import { SelectorCantidad } from './Cantidad';
 
+const MAX_RESULTADOS = 25;
 type Pestana = 'mis' | 'web' | 'escanear' | 'nuevo';
 type Elegido = { alimento: Alimento; externo?: ResultadoExterno };
 
@@ -37,7 +38,7 @@ export function SelectorAlimento({ fecha, comida: comidaIni, onCerrar }: { fecha
     return alimentos
       .filter((a) => !t || normalizar(a.nombre).includes(t))
       .sort((a, b) => (frecuencia.get(b.id!) ?? 0) - (frecuencia.get(a.id!) ?? 0) || a.nombre.localeCompare(b.nombre))
-      .slice(0, 60);
+      .slice(0, t ? MAX_RESULTADOS : 15);
   }, [alimentos, q, frecuencia]);
 
   async function buscarWeb() {
@@ -119,6 +120,7 @@ export function SelectorAlimento({ fecha, comida: comidaIni, onCerrar }: { fecha
 
   return (
     <Modal titulo="Buscar alimento" onCerrar={onCerrar}>
+      <div className="modal-fijo">
       <div className="tabs">
         {([['mis', 'Mis alimentos'], ['web', 'Internet'], ['escanear', 'Escanear'], ['nuevo', 'Nuevo']] as [Pestana, string][]).map(([k, t]) => (
           <button key={k} className={pestana === k ? 'activo' : ''} onClick={() => { setPestana(k); setMsg(null); }}>{t}</button>
@@ -131,14 +133,16 @@ export function SelectorAlimento({ fecha, comida: comidaIni, onCerrar }: { fecha
           {pestana === 'web' && <button className="btn primario" disabled={buscando}>{buscando ? '…' : 'Buscar'}</button>}
         </form>
       )}
+      {pestana === 'mis' && <div className="sub" style={{ marginTop: 6 }}>{q.trim() ? `${locales.length === MAX_RESULTADOS ? `Primeros ${MAX_RESULTADOS}` : locales.length} resultado${locales.length === 1 ? '' : 's'}` : 'Más usados'}</div>}
+      </div>
       {msg && <div className="aviso mt">{msg}</div>}
 
       {pestana === 'mis' && (
         <ul className="lista mt">
           {locales.map((a) => (
-            <li key={a.id} onClick={() => setElegido({ alimento: a })} style={{ cursor: 'pointer' }}>
-              <span className="nombre">{a.nombre} {a.alcance === 'compartido' && <span className="chip ok">compartido</span>}</span>
-              <span className="num sub">{n(a.kcal, 0)} kcal / {a.porcion}</span>
+            <li key={a.id} onClick={() => setElegido({ alimento: a })} className="resultado">
+              <span className="nombre">{a.nombre}<span className="sub detalle">{a.porcion}{a.alcance !== 'compartido' ? ' · mío' : ''}</span></span>
+              <span className="num">{n(a.kcal, 0)} <span className="sub">kcal</span></span>
             </li>
           ))}
           {!locales.length && <li className="vacio">Sin coincidencias. Pruebe en "Internet".</li>}
