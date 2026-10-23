@@ -84,7 +84,12 @@ const COLS_HORA = new Set([16, 19, 22, 25]);
 export function importarPlanilla(wb: ExcelJS.Workbook): ResultadoImportacion {
   const hoja = (nombre: string) => wb.worksheets.find((w) => w.name.trim().toLowerCase() === nombre.toLowerCase());
   const datos = hoja('Datos');
-  if (!datos) throw new Error('No se encontró la hoja "Datos". Verifique que sea la planilla de seguimiento de peso.');
+  if (!datos) {
+    const soloAlimentos = !!hoja('BD Alimento');
+    throw new Error(soloAlimentos
+      ? 'Este archivo solo trae alimentos (hoja "BD Alimento"). Cárguelo en Más → Alimentos → "Carga masiva desde Excel".'
+      : 'No se encontró la hoja "Datos". Verifique que sea la planilla de seguimiento de peso.');
+  }
 
   // ---- parámetros generales ----
   const ai = hoja('Alimentos Ingeridas');
