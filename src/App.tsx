@@ -68,7 +68,7 @@ function Login() {
   return (
     <div className="centro" style={{ padding: 16 }}>
       <form className="card login" onSubmit={enviar}>
-        <h1 style={{ fontSize: 22, margin: '0 0 4px' }}>Control de Peso</h1>
+        <h1 style={{ fontSize: 22, margin: '0 0 4px' }}>Balance Energético</h1>
         <p className="sub" style={{ marginTop: 0 }}>Peso, balance energético y entrenamiento.</p>
         {modo === 'crear' && <label className="campo">Nombre<input type="text" value={nombre} onChange={(e) => setNombre(e.target.value)} /></label>}
         <label className="campo mt">Correo<input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>

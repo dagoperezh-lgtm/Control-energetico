@@ -1,4 +1,4 @@
-# Control de Peso — piloto web
+# Balance Energético — piloto web
 
 Aplicación web (PWA) que reemplaza la planilla *Seguimiento peso*. Registra composición corporal, balance energético, carbohidratos y entrenamiento, con historial completo de todos los datos. Es multiusuario y se instala en la pantalla de inicio del iPhone.
 

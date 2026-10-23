@@ -1,6 +1,6 @@
 {
-  "name": "Control de Peso",
-  "short_name": "Peso",
+  "name": "Balance Energético",
+  "short_name": "Balance",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
