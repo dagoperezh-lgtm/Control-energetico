@@ -6,6 +6,8 @@ import { sb } from '../lib/supabase';
 import { aAlimento, buscarCodigoBarra, buscarOFF, buscarUSDA, normalizar, type ResultadoExterno } from '../lib/fuentesAlimentos';
 import { COMIDAS, type Alimento, type Comida } from '../lib/types';
 import { n } from '../lib/formato';
+import { PORCION_BASE } from '../lib/porciones';
+import { SelectorCantidad } from './Cantidad';
 
 type Pestana = 'mis' | 'web' | 'escanear' | 'nuevo';
 type Elegido = { alimento: Alimento; externo?: ResultadoExterno };
@@ -16,12 +18,12 @@ export function SelectorAlimento({ fecha, comida: comidaIni, onCerrar }: { fecha
   const [q, setQ] = useState('');
   const [comida, setComida] = useState<Comida>(comidaIni);
   const [elegido, setElegido] = useState<Elegido | null>(null);
-  const [cantidad, setCantidad] = useState('1');
+  const [cantidad, setCantidad] = useState(1);
   const [web, setWeb] = useState<ResultadoExterno[]>([]);
   const [buscando, setBuscando] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
-  const [nuevo, setNuevo] = useState({ nombre: '', kcal: '', carbos: '', porcion: '1 porción' });
+  const [nuevo, setNuevo] = useState({ nombre: '', kcal: '', carbos: '', porcion: PORCION_BASE });
 
   // Frecuencia de uso para ordenar "Mis alimentos"
   const frecuencia = useMemo(() => {
@@ -72,7 +74,7 @@ export function SelectorAlimento({ fecha, comida: comidaIni, onCerrar }: { fecha
           a = data as Alimento;
         }
       }
-      const cant = parseFloat(cantidad.replace(',', '.'));
+      const cant = cantidad;
       if (!(cant > 0)) throw new Error('Cantidad inválida');
       const { error } = await sb().from('consumos').insert({
         usuario_id: sesion.user.id, fecha, comida, alimento_id: a.id ?? null, nombre: a.nombre,
@@ -90,17 +92,15 @@ export function SelectorAlimento({ fecha, comida: comidaIni, onCerrar }: { fecha
 
   if (elegido) {
     const a = elegido.alimento;
-    const cant = parseFloat(cantidad.replace(',', '.')) || 0;
+    const cant = cantidad || 0;
     return (
       <Modal titulo="Agregar consumo" onCerrar={onCerrar}>
         <div className="card" style={{ marginBottom: 12 }}>
           <strong>{a.nombre}</strong>
           <div className="sub">{n(a.kcal, 1)} kcal · {n(a.carbos_g, 1)} g carbos por {a.porcion}{elegido.externo?.detalle ? ` · ${elegido.externo.detalle}` : ''}</div>
         </div>
-        <div className="grid2">
-          <label className="campo">Cantidad ({a.porcion === '100 g' ? 'unidades de 100 g' : 'porciones'})
-            <input type="number" inputMode="decimal" step="0.25" min="0" value={cantidad} onChange={(e) => setCantidad(e.target.value)} autoFocus />
-          </label>
+        <SelectorCantidad valor={cantidad} onCambio={setCantidad} porcion={a.porcion || PORCION_BASE} />
+        <div className="mt">
           <label className="campo">Comida
             <select value={comida} onChange={(e) => setComida(e.target.value as Comida)}>
               {COMIDAS.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
@@ -138,7 +138,7 @@ export function SelectorAlimento({ fecha, comida: comidaIni, onCerrar }: { fecha
           {locales.map((a) => (
             <li key={a.id} onClick={() => setElegido({ alimento: a })} style={{ cursor: 'pointer' }}>
               <span className="nombre">{a.nombre} {a.alcance === 'compartido' && <span className="chip ok">compartido</span>}</span>
-              <span className="num sub">{n(a.kcal, 0)} kcal</span>
+              <span className="num sub">{n(a.kcal, 0)} kcal / {a.porcion}</span>
             </li>
           ))}
           {!locales.length && <li className="vacio">Sin coincidencias. Pruebe en "Internet".</li>}
@@ -163,7 +163,7 @@ export function SelectorAlimento({ fecha, comida: comidaIni, onCerrar }: { fecha
           e.preventDefault();
           const kcal = parseFloat(nuevo.kcal.replace(',', '.'));
           if (!nuevo.nombre.trim() || !(kcal >= 0)) { setMsg('Ingrese nombre y kcal.'); return; }
-          setElegido({ alimento: { alcance: 'personal', nombre: nuevo.nombre.trim(), kcal, carbos_g: parseFloat(nuevo.carbos.replace(',', '.')) || 0, porcion: nuevo.porcion || '1 porción', fuente: 'propia' } });
+          setElegido({ alimento: { alcance: 'personal', nombre: nuevo.nombre.trim(), kcal, carbos_g: parseFloat(nuevo.carbos.replace(',', '.')) || 0, porcion: nuevo.porcion || PORCION_BASE, fuente: 'propia' } });
         }}>
           <label className="campo">Nombre<input type="text" value={nuevo.nombre} onChange={(e) => setNuevo({ ...nuevo, nombre: e.target.value })} /></label>
           <div className="grid3 mt">

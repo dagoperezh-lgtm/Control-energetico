@@ -95,7 +95,7 @@ export function leerCatalogo(wb: ExcelJS.Workbook): LecturaCatalogo {
       if (porNombre.has(clave)) repetidas++;
       porNombre.set(clave, {
         fila: r, nombre, kcal, carbos_g: carbos ?? 0,
-        porcion: (cols.porcion && texto(row.getCell(cols.porcion).value).trim()) || '1 porción',
+        porcion: (cols.porcion && texto(row.getCell(cols.porcion).value).trim()) || '100 g',
         codigo_barra: (cols.codigo && texto(row.getCell(cols.codigo).value).trim()) || null,
       });
     }
@@ -151,7 +151,7 @@ export async function descargarPlantilla() {
   ws.getCell('H2').font = { bold: true };
   [
     'Una fila por alimento. Obligatorios: Comida y Cal.',
-    'Cal y Carbs son por porción (lo que se descuenta al registrar 1 unidad).',
+    'Cal y Carbs son por porción. Si no indica Porción, se asume 100 g (como la planilla original).',
     'Porción y Código de barras son opcionales.',
     'Borre las filas de ejemplo antes de cargar.',
     'Si un nombre ya existe, la app ofrece actualizar sus valores.',

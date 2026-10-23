@@ -186,7 +186,7 @@ function Alimentos() {
             const propio = a.propietario === sesion?.user.id;
             return (
               <li key={a.id}>
-                <span className="nombre">{a.nombre}<br /><span className="sub">{n(+a.kcal, 1)} kcal · {n(+a.carbos_g, 1)} g carbos · {a.porcion}</span></span>
+                <span className="nombre">{a.nombre}<br /><span className="sub">{n(+a.kcal, 1)} kcal · {n(+a.carbos_g, 1)} g carbos · por <strong>{a.porcion}</strong></span></span>
                 <span className={`chip ${a.alcance === 'compartido' ? 'ok' : a.alcance === 'propuesto' ? 'aviso' : ''}`}>{a.alcance}</span>
                 {propio && a.alcance === 'personal' && <button className="btn chico" onClick={() => cambiarAlcance(a, perfil?.es_admin ? 'compartido' : 'propuesto')}>{perfil?.es_admin ? 'Compartir' : 'Proponer'}</button>}
                 {(propio && a.alcance !== 'compartido') || perfil?.es_admin ? <button className="icono-btn" onClick={() => setEditar(a)} aria-label="Editar">✎</button> : null}
@@ -218,7 +218,7 @@ function SelectorDestino({ valor, onCambio }: { valor: Alimento['alcance']; onCa
 
 function NuevoAlimento({ onCerrar }: { onCerrar: () => void }) {
   const { perfil, sesion, alimentos, recargar } = useDatos();
-  const [f, setF] = useState({ nombre: '', kcal: '', carbos: '', porcion: '1 porción', codigo: '' });
+  const [f, setF] = useState({ nombre: '', kcal: '', carbos: '', porcion: '100 g', codigo: '' });
   const [destino, setDestino] = useState<Alimento['alcance']>(perfil?.es_admin ? 'compartido' : 'personal');
   const [msg, setMsg] = useState<string | null>(null);
   const [otro, setOtro] = useState(false);
@@ -232,11 +232,11 @@ function NuevoAlimento({ onCerrar }: { onCerrar: () => void }) {
     if (existente) { setMsg(`Ya existe "${existente.nombre}" (${n(+existente.kcal)} kcal). Edítelo desde la lista.`); return; }
     const { error } = await sb().from('alimentos').insert({
       propietario: sesion!.user.id, alcance: destino, nombre: f.nombre.trim().replace(/\s+/g, ' '), kcal,
-      carbos_g: num(f.carbos) ?? 0, porcion: f.porcion.trim() || '1 porción', fuente: 'propia', codigo_barra: f.codigo.trim() || null,
+      carbos_g: num(f.carbos) ?? 0, porcion: f.porcion.trim() || '100 g', fuente: 'propia', codigo_barra: f.codigo.trim() || null,
     });
     if (error) { setMsg(error.message); return; }
     await recargar();
-    if (seguir) { setF({ nombre: '', kcal: '', carbos: '', porcion: '1 porción', codigo: '' }); setMsg(`Guardado. Puede ingresar el siguiente.`); setOtro(true); }
+    if (seguir) { setF({ nombre: '', kcal: '', carbos: '', porcion: '100 g', codigo: '' }); setMsg(`Guardado. Puede ingresar el siguiente.`); setOtro(true); }
     else onCerrar();
   }
 

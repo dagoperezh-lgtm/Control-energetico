@@ -3,6 +3,9 @@ import { useDatos } from '../lib/datos';
 import { sb } from '../lib/supabase';
 import { hoyLocal, kcalActividad, modeloEjercicio, sumarDias } from '../lib/calc';
 import { useMemo } from 'react';
+import { fraccion, PORCION_BASE, siguiente, textoCantidad } from '../lib/porciones';
+import { SelectorCantidad } from '../components/Cantidad';
+import { Modal } from '../components/ui';
 import { COMIDAS, DEPORTES, type Actividad, type Comida, type Consumo } from '../lib/types';
 import { fechaLarga, horasMin, n, ns } from '../lib/formato';
 import { Kpi } from '../components/ui';
@@ -10,7 +13,10 @@ import { SelectorAlimento } from '../components/SelectorAlimento';
 import { FormActividad, FormMedicion } from '../components/Formularios';
 
 export default function Hoy() {
-  const { diaPorFecha, consumos, actividades, mediciones, sesion, recargar, calibracion } = useDatos();
+  const { diaPorFecha, consumos, actividades, mediciones, alimentos, sesion, recargar, calibracion } = useDatos();
+  const [editCant, setEditCant] = useState<Consumo | null>(null);
+  const porcionPorId = useMemo(() => new Map(alimentos.map((a) => [a.id, a.porcion])), [alimentos]);
+  const porcionDe = (c: Consumo) => (c.alimento_id ? porcionPorId.get(c.alimento_id) : undefined) ?? null;
   const [fecha, setFecha] = useState(hoyLocal());
   const [agregar, setAgregar] = useState<Comida | null>(null);
   const [actForm, setActForm] = useState<{ act?: Actividad } | null>(null);
@@ -100,10 +106,10 @@ export default function Hoy() {
               <ul className="lista">
                 {items.map((x) => (
                   <li key={x.id}>
-                    <span className="nombre">{x.nombre}</span>
-                    <button className="icono-btn" onClick={() => cambiarCantidad(x, +x.cantidad - (x.cantidad > 1 ? 1 : 0.5))} aria-label="Menos">−</button>
-                    <span className="num" style={{ minWidth: 32 }}>{n(+x.cantidad, x.cantidad % 1 ? 2 : 0)}</span>
-                    <button className="icono-btn" onClick={() => cambiarCantidad(x, +x.cantidad + 1)} aria-label="Más">+</button>
+                    <span className="nombre">{x.nombre}<br /><span className="sub">{textoCantidad(+x.cantidad, porcionDe(x))}</span></span>
+                    <button className="icono-btn" onClick={() => cambiarCantidad(x, siguiente(+x.cantidad, -1))} aria-label="Menos">−</button>
+                    <button className="btn chico" style={{ minWidth: 40 }} onClick={() => setEditCant(x)} aria-label="Cambiar cantidad">{fraccion(+x.cantidad)}</button>
+                    <button className="icono-btn" onClick={() => cambiarCantidad(x, siguiente(+x.cantidad, 1))} aria-label="Más">+</button>
                     <span className="num sub" style={{ minWidth: 64 }}>{n(x.kcal_unidad * x.cantidad)} kcal</span>
                   </li>
                 ))}
@@ -146,7 +152,22 @@ export default function Hoy() {
 
       {agregar && <SelectorAlimento fecha={fecha} comida={agregar} onCerrar={() => setAgregar(null)} />}
       {actForm && <FormActividad fecha={fecha} actividad={actForm.act} onCerrar={() => setActForm(null)} />}
+      {editCant && <EditarCantidad consumo={editCant} porcion={porcionDe(editCant) ?? PORCION_BASE} onGuardar={async (v) => { await cambiarCantidad(editCant, v); setEditCant(null); }} onCerrar={() => setEditCant(null)} />}
       {medForm && <FormMedicion fecha={fecha} medicion={medicion} onCerrar={() => setMedForm(false)} />}
     </>
+  );
+}
+
+function EditarCantidad({ consumo, porcion, onGuardar, onCerrar }: { consumo: Consumo; porcion: string; onGuardar: (v: number) => void; onCerrar: () => void }) {
+  const [v, setV] = useState(+consumo.cantidad);
+  return (
+    <Modal titulo={consumo.nombre} onCerrar={onCerrar}>
+      <SelectorCantidad valor={v} onCambio={setV} porcion={porcion} />
+      <p className="sub">Total: <strong>{n(consumo.kcal_unidad * v)} kcal</strong> · {n(consumo.carbos_unidad * v, 1)} g carbos</p>
+      <div className="fila entre mt">
+        <button className="btn peligro" onClick={() => onGuardar(0)}>Quitar</button>
+        <button className="btn primario" onClick={() => onGuardar(v)} disabled={!(v > 0)}>Guardar</button>
+      </div>
+    </Modal>
   );
 }

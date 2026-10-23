@@ -217,7 +217,7 @@ export function importarPlanilla(wb: ExcelJS.Workbook): ResultadoImportacion {
       nombres.add(nombre.toLowerCase());
       alimentos.push({
         alcance: 'personal', nombre, kcal, carbos_g: num(bd.getCell(fila, 4).value) ?? 0,
-        porcion: '1 porción', fuente: 'planilla',
+        porcion: '100 g', fuente: 'planilla',
       });
     }
   }
