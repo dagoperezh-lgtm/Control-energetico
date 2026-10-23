@@ -7,6 +7,7 @@ import type { Alimento, ParametrosPerfil, Perfil } from '../lib/types';
 import { fechaCorta, n } from '../lib/formato';
 import type { ResultadoImportacion } from '../lib/importador';
 import { Modal } from '../components/ui';
+import { clasificar, descargarPlantilla, leerCatalogo, type Clasificacion, type LecturaCatalogo } from '../lib/cargaAlimentos';
 
 type Vista = 'perfil' | 'alimentos' | 'importar';
 
@@ -149,6 +150,8 @@ function Alimentos() {
   const { alimentos, perfil, sesion, recargar } = useDatos();
   const [q, setQ] = useState('');
   const [editar, setEditar] = useState<Alimento | null>(null);
+  const [nuevo, setNuevo] = useState(false);
+  const [masiva, setMasiva] = useState(false);
   const t = normalizar(q);
   const lista = alimentos.filter((a) => !t || normalizar(a.nombre).includes(t));
   const propuestos = perfil?.es_admin ? alimentos.filter((a) => a.alcance === 'propuesto') : [];
@@ -173,6 +176,10 @@ function Alimentos() {
       )}
       <section className="card">
         <h2>Catálogo <span className="sub">{alimentos.length} alimentos</span></h2>
+        <div className="fila" style={{ marginBottom: 10, flexWrap: 'wrap' }}>
+          <button className="btn primario chico" onClick={() => setNuevo(true)}>+ Nuevo alimento</button>
+          <button className="btn chico" onClick={() => setMasiva(true)}>Carga masiva desde Excel</button>
+        </div>
         <input type="search" placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} />
         <ul className="lista mt">
           {lista.slice(0, 200).map((a) => {
@@ -189,7 +196,169 @@ function Alimentos() {
         </ul>
       </section>
       {editar && <EditarAlimento a={editar} onCerrar={() => setEditar(null)} />}
+      {nuevo && <NuevoAlimento onCerrar={() => setNuevo(false)} />}
+      {masiva && <CargaMasiva onCerrar={() => setMasiva(false)} />}
     </>
+  );
+}
+
+/** Destino de lo cargado: el administrador publica en el catálogo compartido; el resto, personal o propuesto */
+function SelectorDestino({ valor, onCambio }: { valor: Alimento['alcance']; onCambio: (v: Alimento['alcance']) => void }) {
+  const { perfil } = useDatos();
+  return (
+    <label className="campo mt">Destino
+      <select value={valor} onChange={(e) => onCambio(e.target.value as Alimento['alcance'])}>
+        {perfil?.es_admin && <option value="compartido">Catálogo compartido (todos los usuarios)</option>}
+        <option value="personal">Solo mi catálogo</option>
+        {!perfil?.es_admin && <option value="propuesto">Proponer al catálogo compartido</option>}
+      </select>
+    </label>
+  );
+}
+
+function NuevoAlimento({ onCerrar }: { onCerrar: () => void }) {
+  const { perfil, sesion, alimentos, recargar } = useDatos();
+  const [f, setF] = useState({ nombre: '', kcal: '', carbos: '', porcion: '1 porción', codigo: '' });
+  const [destino, setDestino] = useState<Alimento['alcance']>(perfil?.es_admin ? 'compartido' : 'personal');
+  const [msg, setMsg] = useState<string | null>(null);
+  const [otro, setOtro] = useState(false);
+  const num = (s: string) => (s.trim() === '' ? null : Number(s.replace(',', '.')));
+  const existente = f.nombre.trim() ? alimentos.find((a) => normalizar(a.nombre) === normalizar(f.nombre.trim())) : undefined;
+
+  async function guardar(seguir: boolean) {
+    const kcal = num(f.kcal);
+    if (!f.nombre.trim()) { setMsg('Ingrese el nombre.'); return; }
+    if (kcal == null || !Number.isFinite(kcal) || kcal < 0) { setMsg('Ingrese las kcal por porción.'); return; }
+    if (existente) { setMsg(`Ya existe "${existente.nombre}" (${n(+existente.kcal)} kcal). Edítelo desde la lista.`); return; }
+    const { error } = await sb().from('alimentos').insert({
+      propietario: sesion!.user.id, alcance: destino, nombre: f.nombre.trim().replace(/\s+/g, ' '), kcal,
+      carbos_g: num(f.carbos) ?? 0, porcion: f.porcion.trim() || '1 porción', fuente: 'propia', codigo_barra: f.codigo.trim() || null,
+    });
+    if (error) { setMsg(error.message); return; }
+    await recargar();
+    if (seguir) { setF({ nombre: '', kcal: '', carbos: '', porcion: '1 porción', codigo: '' }); setMsg(`Guardado. Puede ingresar el siguiente.`); setOtro(true); }
+    else onCerrar();
+  }
+
+  return (
+    <Modal titulo="Nuevo alimento" onCerrar={onCerrar}>
+      <label className="campo">Nombre<input type="text" value={f.nombre} onChange={(e) => { setF({ ...f, nombre: e.target.value }); setMsg(null); }} autoFocus placeholder="Ej.: Marraqueta (unidad)" /></label>
+      {existente && <div className="aviso mt">Ya existe: {existente.nombre} · {n(+existente.kcal)} kcal · {n(+existente.carbos_g, 1)} g</div>}
+      <div className="grid3 mt">
+        <label className="campo">kcal por porción<input type="number" inputMode="decimal" value={f.kcal} onChange={(e) => setF({ ...f, kcal: e.target.value })} /></label>
+        <label className="campo">Carbos (g)<input type="number" inputMode="decimal" value={f.carbos} onChange={(e) => setF({ ...f, carbos: e.target.value })} /></label>
+        <label className="campo">Porción<input type="text" value={f.porcion} onChange={(e) => setF({ ...f, porcion: e.target.value })} /></label>
+      </div>
+      <label className="campo mt">Código de barras (opcional)<input type="text" inputMode="numeric" value={f.codigo} onChange={(e) => setF({ ...f, codigo: e.target.value })} /></label>
+      <SelectorDestino valor={destino} onCambio={setDestino} />
+      {msg && <div className={otro && msg.startsWith('Guardado') ? 'aviso mt' : 'error mt'}>{msg}</div>}
+      <div className="fila entre mt">
+        <button className="btn" onClick={() => guardar(true)}>Guardar y agregar otro</button>
+        <button className="btn primario" onClick={() => guardar(false)}>Guardar</button>
+      </div>
+    </Modal>
+  );
+}
+
+function CargaMasiva({ onCerrar }: { onCerrar: () => void }) {
+  const { perfil, sesion, alimentos, recargar } = useDatos();
+  const [lectura, setLectura] = useState<LecturaCatalogo | null>(null);
+  const [cls, setCls] = useState<Clasificacion | null>(null);
+  const [destino, setDestino] = useState<Alimento['alcance']>(perfil?.es_admin ? 'compartido' : 'personal');
+  const [actualizar, setActualizar] = useState(true);
+  const [estado, setEstado] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+  const [listo, setListo] = useState(false);
+
+  async function leer(file: File) {
+    setError(null); setLectura(null); setCls(null); setListo(false); setEstado('Leyendo archivo…');
+    try {
+      const { default: ExcelJS } = await import('exceljs');
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(await file.arrayBuffer());
+      const l = leerCatalogo(wb);
+      setLectura(l);
+      setCls(clasificar(l.filas, alimentos, sesion!.user.id, !!perfil?.es_admin));
+      setEstado(null);
+    } catch (e: any) { setError(e.message ?? String(e)); setEstado(null); }
+  }
+
+  async function cargar() {
+    if (!cls || !sesion) return;
+    setOcupado(true); setError(null);
+    try {
+      setEstado(`Agregando ${cls.nuevos.length} alimentos…`);
+      await insertarLotes('alimentos', cls.nuevos.map((f) => ({
+        propietario: sesion.user.id, alcance: destino, nombre: f.nombre, kcal: f.kcal, carbos_g: f.carbos_g,
+        porcion: f.porcion, codigo_barra: f.codigo_barra, fuente: 'planilla',
+      })));
+      const aActualizar = actualizar ? cls.conCambios.filter((c) => c.editable) : [];
+      let i = 0;
+      for (const c of aActualizar) {
+        setEstado(`Actualizando valores (${++i}/${aActualizar.length})…`);
+        const { error } = await sb().from('alimentos').update({ kcal: c.fila.kcal, carbos_g: c.fila.carbos_g, porcion: c.fila.porcion,
+          ...(c.fila.codigo_barra ? { codigo_barra: c.fila.codigo_barra } : {}) }).eq('id', c.actual.id!);
+        if (error) throw new Error(`${c.fila.nombre}: ${error.message}`);
+      }
+      await recargar();
+      setEstado(`Listo: ${cls.nuevos.length} agregados, ${aActualizar.length} actualizados.`);
+      setListo(true);
+    } catch (e: any) { setError(e.message ?? String(e)); setEstado(null); }
+    finally { setOcupado(false); }
+  }
+
+  const editables = cls?.conCambios.filter((c) => c.editable).length ?? 0;
+  return (
+    <Modal titulo="Carga masiva de alimentos" onCerrar={onCerrar}>
+      <p className="sub" style={{ marginTop: 0 }}>
+        Use un Excel con el formato de la hoja <strong>BD Alimento</strong>: columnas <strong>Comida</strong>, <strong>Cal</strong> y <strong>Carbs</strong>{' '}
+        (opcionales: Porción y Código de barras). Sirve su planilla original o la plantilla.
+      </p>
+      <button className="btn chico" onClick={() => descargarPlantilla()}>Descargar plantilla</button>
+      <div className="mt"><input type="file" accept=".xlsx" onChange={(e) => e.target.files?.[0] && leer(e.target.files[0])} disabled={ocupado} /></div>
+      {error && <div className="error mt">{error}</div>}
+      {estado && <p className="sub">{estado}</p>}
+      {lectura && cls && !listo && (
+        <>
+          <h3>Vista previa · hoja "{lectura.hoja}"</h3>
+          <ul className="lista">
+            <li><span className="nombre">Filas válidas leídas</span><span className="num">{lectura.filas.length}</span></li>
+            <li><span className="nombre"><strong>Nuevos</strong> (se agregan)</span><span className="num"><strong>{cls.nuevos.length}</strong></span></li>
+            <li><span className="nombre">Ya existen con los mismos valores (se omiten)</span><span className="num">{cls.sinCambios.length}</span></li>
+            <li><span className="nombre">Ya existen con valores distintos</span><span className="num">{cls.conCambios.length}</span></li>
+            {lectura.repetidasEnArchivo > 0 && <li><span className="nombre">Repetidos dentro del archivo (se usa la última fila)</span><span className="num">{lectura.repetidasEnArchivo}</span></li>}
+            {lectura.errores.length > 0 && <li><span className="nombre">Filas con error (se omiten)</span><span className="num">{lectura.errores.length}</span></li>}
+          </ul>
+          {lectura.errores.length > 0 && (
+            <details className="mt"><summary className="sub">Ver filas con error</summary>
+              <ul className="lista">{lectura.errores.slice(0, 50).map((e) => <li key={e.fila}><span className="nombre">Fila {e.fila}: {e.texto}</span><span className="sub">{e.motivo}</span></li>)}</ul>
+            </details>
+          )}
+          {cls.conCambios.length > 0 && (
+            <details className="mt"><summary className="sub">Ver diferencias ({cls.conCambios.length})</summary>
+              <div className="tabla-wrap"><table className="tabla">
+                <thead><tr><th>Alimento</th><th>kcal actual</th><th>kcal archivo</th><th>Carbos actual</th><th>Carbos archivo</th></tr></thead>
+                <tbody>{cls.conCambios.slice(0, 100).map((c) => (
+                  <tr key={c.fila.fila}><td>{c.fila.nombre}{!c.editable && <span className="chip"> sin permiso</span>}</td>
+                    <td>{n(+c.actual.kcal, 1)}</td><td>{n(c.fila.kcal, 1)}</td><td>{n(+c.actual.carbos_g, 1)}</td><td>{n(c.fila.carbos_g, 1)}</td></tr>
+                ))}</tbody>
+              </table></div>
+            </details>
+          )}
+          {cls.conCambios.length > 0 && (
+            <label className="fila mt"><input type="checkbox" checked={actualizar} onChange={(e) => setActualizar(e.target.checked)} />
+              Actualizar los valores de los {editables} existentes que puedo editar</label>
+          )}
+          <SelectorDestino valor={destino} onCambio={setDestino} />
+          <p className="sub">Los consumos ya registrados no cambian: cada uno guarda sus propios valores.</p>
+          <button className="btn primario mt" onClick={cargar} disabled={ocupado || (cls.nuevos.length === 0 && (!actualizar || editables === 0))}>
+            {ocupado ? 'Cargando…' : `Agregar ${cls.nuevos.length}${actualizar && editables ? ` y actualizar ${editables}` : ''}`}
+          </button>
+        </>
+      )}
+      {listo && <button className="btn primario mt" onClick={onCerrar}>Cerrar</button>}
+    </Modal>
   );
 }
 

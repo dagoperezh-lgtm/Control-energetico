@@ -18,6 +18,14 @@ Aplicación web (PWA) que reemplaza la planilla *Seguimiento peso*. Registra com
 | **Zonas Frec Cardiaca** (Karvonen) | **Entreno** → Zonas de FC |
 | Gráficos | **Progreso** → Tendencia (media móvil 7 días) |
 
+## Poblar el catálogo de alimentos (sin tocar código)
+
+En **Más → Alimentos**:
+
+- **+ Nuevo alimento**: carga individual (nombre, kcal y carbos por porción, porción, código de barras). Avisa si el nombre ya existe. "Guardar y agregar otro" permite cargar varios seguidos.
+- **Carga masiva desde Excel**: acepta la hoja *BD Alimento* de la planilla (columnas Comida, Cal, Carbs; opcionales Porción y Código de barras) o la plantilla descargable. Muestra una vista previa con nuevos, ya existentes, diferencias y filas con error, y permite actualizar los valores de los existentes.
+- **Destino**: el administrador publica en el catálogo compartido; los demás usuarios cargan en su catálogo personal o proponen al compartido.
+
 ## Registro histórico
 
 - Toda alta, edición o eliminación queda en `historial_cambios`, con el valor anterior y el nuevo (**Historial → Cambios**).
