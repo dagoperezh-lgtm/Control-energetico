@@ -58,8 +58,8 @@ function Login() {
     e.preventDefault();
     setOcupado(true); setMsg(null);
     const r = modo === 'entrar'
-      ? await sb().auth.signInWithPassword({ email, password: clave })
-      : await sb().auth.signUp({ email, password: clave, options: { data: { nombre }, emailRedirectTo: location.origin + location.pathname } });
+      ? await sb().auth.signInWithPassword({ email: email.trim().toLowerCase(), password: clave })
+      : await sb().auth.signUp({ email: email.trim().toLowerCase(), password: clave, options: { data: { nombre }, emailRedirectTo: location.origin + location.pathname } });
     setOcupado(false);
     if (r.error) setMsg({ t: r.error.message, error: true });
     else if (modo === 'crear' && !r.data.session) setMsg({ t: 'Cuenta creada. Revise su correo para confirmarla y luego ingrese.' });

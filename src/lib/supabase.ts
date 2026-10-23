@@ -3,13 +3,25 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 const CLAVE_LOCAL = 'control-peso.supabase';
 
 /** Configuración: variables de entorno del build (GitHub Actions) o, si faltan, la ingresada en la pantalla de configuración. */
+/**
+ * Deja solo el origen del proyecto (https://xxxx.supabase.co).
+ * La consola de Supabase muestra a veces la URL con /rest/v1/ u otra ruta; el cliente necesita la base.
+ */
+export function normalizarUrl(u: string): string {
+  let s = u.trim().replace(/^["']|["']$/g, '');
+  if (!/^https?:\/\//i.test(s)) s = `https://${s}`;
+  try { return new URL(s).origin; } catch { return s.replace(/\/+$/, ''); }
+}
+
 export function leerConfig(): { url: string; anonKey: string } | null {
-  const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-  if (url && anonKey) return { url, anonKey };
+  const url = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim();
+  const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim().replace(/^["']|["']$/g, '');
+  if (url && anonKey) return { url: normalizarUrl(url), anonKey };
   try {
     const raw = localStorage.getItem(CLAVE_LOCAL);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const c = JSON.parse(raw);
+    return { url: normalizarUrl(c.url), anonKey: c.anonKey.trim() };
   } catch {
     return null;
   }
