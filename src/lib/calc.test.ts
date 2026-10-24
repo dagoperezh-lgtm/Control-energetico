@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { existsSync } from 'node:fs';
 import ExcelJS from 'exceljs';
-import { basalHarrisBenedict, basalKatchMcArdle, calcularDias, imc, modeloEjercicio, resumenSemanal, zonasFC } from './calc';
+import { basalHarrisBenedict, basalKatchMcArdle, basalMifflin, calcularDias, imc, modeloEjercicio, resumenSemanal, zonasFC } from './calc';
 import { importarPlanilla } from './importador';
 import type { Perfil } from './types';
 
@@ -80,5 +80,24 @@ describe.skipIf(!ruta || !existsSync(ruta))('planilla real', () => {
     console.log('Modelo ejercicio', modelo);
     const semanas = resumenSemanal(dias, res.mediciones).slice(0, 4);
     console.log('Últimas semanas', semanas);
+  });
+});
+
+describe('ajustes del gasto basal', () => {
+  it('Mifflin-St Jeor distingue por sexo', () => {
+    expect(basalMifflin('M', 80, 167, 57)).toBeCloseTo(10 * 80 + 6.25 * 167 - 5 * 57 + 5, 6);
+    expect(basalMifflin('M', 80, 167, 57) - basalMifflin('F', 80, 167, 57)).toBe(166);
+  });
+  it('aplica el ajuste personal solo desde su vigencia', () => {
+    const perfil: Perfil = { id: 'x', nombre: '', sexo: 'M', fecha_nacimiento: '1969-08-01', inicio_etapa: null, es_admin: false };
+    const base = { estatura_cm: 167, carbos_por_hora: 40, meta_kcal: 1500, fc_reposo: null, fc_maxima: null, edad_fija: null };
+    const parametros = [
+      { ...base, vigente_desde: '2026-01-01', formula_basal: 'mifflin_st_jeor' as const, ajuste_basal_pct: 0 },
+      { ...base, vigente_desde: '2026-02-01', formula_basal: 'mifflin_st_jeor' as const, ajuste_basal_pct: -10 },
+    ];
+    const mediciones = [{ fecha: '2026-01-31', peso_kg: 80, grasa_pct: 25, origen: 'manual' as const }, { fecha: '2026-02-01', peso_kg: 80, grasa_pct: 25, origen: 'manual' as const }];
+    const dias = calcularDias({ perfil, parametros, mediciones, consumos: [], actividades: [] }, '2026-01-31', '2026-02-01');
+    expect(dias[1].basal! / dias[0].basal!).toBeCloseTo(0.9, 3);
+    expect(dias[1].ajusteBasalPct).toBe(-10);
   });
 });

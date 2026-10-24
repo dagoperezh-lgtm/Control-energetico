@@ -78,6 +78,7 @@ export default function Hoy() {
           <strong className={dia?.balanceCarbos != null && dia.balanceCarbos < 0 ? 'pos' : ''}>{ns(dia?.balanceCarbos, 0)} g</strong>
         </div>
         {dia?.basalOrigen === 'planilla' && <p className="sub">Gasto basal registrado en la planilla original.</p>}
+        {dia?.ajusteBasalPct ? <p className="sub">Gasto basal con ajuste personal de {dia.ajusteBasalPct > 0 ? '+' : ''}{n(dia.ajusteBasalPct, 1)} %.</p> : null}
       </section>
 
       <section className="card">

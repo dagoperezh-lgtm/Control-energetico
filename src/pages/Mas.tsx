@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useDatos } from '../lib/datos';
 import { insertarLotes, sb, borrarConfig, leerConfig } from '../lib/supabase';
-import { hoyLocal, parametrosEn } from '../lib/calc';
+import { hoyLocal, NOMBRE_FORMULA, parametrosEn } from '../lib/calc';
 import { normalizar } from '../lib/fuentesAlimentos';
 import type { Alimento, ParametrosPerfil, Perfil } from '../lib/types';
 import { fechaCorta, n } from '../lib/formato';
@@ -71,18 +71,19 @@ function PerfilVista() {
         </p>
         <div className="tabla-wrap">
           <table className="tabla">
-            <thead><tr><th>Desde</th><th>Estatura</th><th>Fórmula basal</th><th>Edad fija</th><th>Carbos/h</th><th>Meta kcal</th><th>FC reposo</th><th>FC máx</th></tr></thead>
+            <thead><tr><th>Desde</th><th>Estatura</th><th>Fórmula basal</th><th>Ajuste</th><th>Edad fija</th><th>Carbos/h</th><th>Meta kcal</th><th>FC reposo</th><th>FC máx</th></tr></thead>
             <tbody>
               {[...parametros].reverse().map((p) => (
                 <tr key={p.id}>
                   <td>{fechaCorta(p.vigente_desde)} {p === vigente && <span className="chip ok">vigente</span>}</td>
                   <td>{n(+p.estatura_cm, 1)} cm</td>
-                  <td>{p.formula_basal === 'harris_benedict' ? 'Harris-Benedict' : 'Katch-McArdle'}</td>
+                  <td>{NOMBRE_FORMULA[p.formula_basal] ?? p.formula_basal}</td>
+                  <td title={p.nota ?? ''}>{p.ajuste_basal_pct ? `${p.ajuste_basal_pct > 0 ? '+' : ''}${n(+p.ajuste_basal_pct, 1)} %` : '—'}</td>
                   <td>{p.edad_fija ?? '—'}</td><td>{n(+p.carbos_por_hora)} g</td><td>{n(+p.meta_kcal)}</td>
                   <td>{p.fc_reposo ?? '—'}</td><td>{p.fc_maxima ?? '—'}</td>
                 </tr>
               ))}
-              {!parametros.length && <tr><td colSpan={8} className="vacio">Defina sus parámetros para que la app calcule el gasto basal.</td></tr>}
+              {!parametros.length && <tr><td colSpan={9} className="vacio">Defina sus parámetros para que la app calcule el gasto basal.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -104,17 +105,26 @@ function FormParametros({ base, onCerrar }: { base: ParametrosPerfil | null; onC
     vigente_desde: hoyLocal(), estatura_cm: String(base?.estatura_cm ?? ''), formula_basal: base?.formula_basal ?? 'harris_benedict',
     edad_fija: base?.edad_fija?.toString() ?? '', carbos_por_hora: String(base?.carbos_por_hora ?? 40), meta_kcal: String(base?.meta_kcal ?? 1200),
     fc_reposo: base?.fc_reposo?.toString() ?? '', fc_maxima: base?.fc_maxima?.toString() ?? '',
+    ajuste_basal_pct: base?.ajuste_basal_pct ? String(base.ajuste_basal_pct) : '', nota: base?.nota && !base.nota.startsWith('Importado') ? base.nota : '',
   });
   const [msg, setMsg] = useState<string | null>(null);
   const num = (s: string) => (s.trim() === '' ? null : +s.replace(',', '.'));
   async function guardar() {
     if (!num(f.estatura_cm)) { setMsg('Ingrese la estatura.'); return; }
+    const aj = num(f.ajuste_basal_pct);
+    if (aj != null && (!Number.isFinite(aj) || aj < -40 || aj > 40)) { setMsg('El ajuste del basal debe estar entre −40 % y +40 %.'); return; }
     const { error } = await sb().from('parametros_perfil').upsert({
       usuario_id: sesion!.user.id, vigente_desde: f.vigente_desde, estatura_cm: num(f.estatura_cm), formula_basal: f.formula_basal,
       edad_fija: num(f.edad_fija), carbos_por_hora: num(f.carbos_por_hora) ?? 40, meta_kcal: num(f.meta_kcal) ?? 1200,
       fc_reposo: num(f.fc_reposo), fc_maxima: num(f.fc_maxima),
+      ajuste_basal_pct: aj ?? 0, nota: f.nota.trim() || null,
     }, { onConflict: 'usuario_id,vigente_desde' });
-    if (error) { setMsg(error.message); return; }
+    if (error) {
+      setMsg(/ajuste_basal_pct|mifflin|check constraint/i.test(error.message)
+        ? 'Falta actualizar la base de datos: ejecute supabase/migracion-002.sql en el SQL Editor de Supabase.'
+        : error.message);
+      return;
+    }
     await recargar();
     onCerrar();
   }
@@ -128,6 +138,7 @@ function FormParametros({ base, onCerrar }: { base: ParametrosPerfil | null; onC
         {campo('estatura_cm', 'Estatura (cm)')}
         <label className="campo">Fórmula de gasto basal
           <select value={f.formula_basal} onChange={(e) => setF({ ...f, formula_basal: e.target.value as any })}>
+            <option value="mifflin_st_jeor">Mifflin-St Jeor (recomendada)</option>
             <option value="harris_benedict">Harris-Benedict (peso total)</option>
             <option value="katch_mcardle">Katch-McArdle (masa magra)</option>
           </select>
@@ -138,7 +149,18 @@ function FormParametros({ base, onCerrar }: { base: ParametrosPerfil | null; onC
         {campo('fc_reposo', 'FC reposo (ppm)')}
         {campo('fc_maxima', 'FC máxima (ppm)')}
       </div>
-      <p className="sub">Katch-McArdle es más fiel cuando el % de grasa se mide con regularidad.</p>
+      <h3>Ajuste personal del gasto basal</h3>
+      <div className="grid2">
+        {campo('ajuste_basal_pct', 'Ajuste (%), ej. −10')}
+        <label className="campo">Motivo (opcional, privado)<input type="text" value={f.nota} maxLength={80} placeholder="Ej.: indicación nutricionista" onChange={(e) => setF({ ...f, nota: e.target.value })} /></label>
+      </div>
+      <p className="sub">
+        Úselo para una corrección indicada por su médico o nutricionista (por ejemplo, por una condición tiroidea o un medicamento).
+        Negativo baja el basal; positivo lo sube. Si no tiene una indicación, déjelo vacío y use la autocalibración en Progreso → Cierre semanal, que mide el gasto real con la balanza.
+      </p>
+      <p className="sub">
+        Fórmulas: Mifflin-St Jeor y Harris-Benedict usan peso, estatura, edad y sexo. Katch-McArdle usa la masa magra y es más fiel cuando el % de grasa se mide con regularidad.
+      </p>
       {msg && <div className="error">{msg}</div>}
       <button className="btn primario mt" onClick={guardar}>Guardar</button>
     </Modal>

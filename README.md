@@ -14,7 +14,7 @@ Aplicación web (PWA) que reemplaza la planilla *Seguimiento peso*. Registra com
 | Resumen semanal (déficit vs variación real) | **Progreso** → Cierre semanal + autocalibración |
 | **Alimentos Ingeridas** (desayuno, almuerzo, once/cena, meta 1.200) | **Hoy** → comidas, meta diaria, "repetir ayer" |
 | **BD Alimento** | Catálogo personal / compartido + Open Food Facts + USDA + código de barras |
-| **Gasto Basal** (Harris-Benedict y Katch-McArdle; edad 51 → 54) | Parámetros con vigencia por fecha |
+| **Gasto Basal** (Harris-Benedict y Katch-McArdle; edad 51 → 54) | Parámetros con vigencia por fecha; además Mifflin-St Jeor y ajuste personal en % |
 | **Zonas Frec Cardiaca** (Karvonen) | **Entreno** → Zonas de FC |
 | Gráficos | **Progreso** → Tendencia (media móvil 7 días) |
 
@@ -54,6 +54,10 @@ En **Más → Alimentos**:
 3. Cada `push` a `main` corre las pruebas, compila y publica en `https://<usuario>.github.io/<repositorio>/`.
 
 Si no se definen las variables, la app pide la URL y la clave la primera vez que se abre en cada dispositivo.
+
+### Migraciones (instalaciones existentes)
+
+- `supabase/migracion-002.sql`: agrega la fórmula Mifflin-St Jeor y el ajuste personal del gasto basal. Ejecutar una vez en el SQL Editor (es segura de repetir). Las instalaciones nuevas ya lo incluyen en `schema.sql`.
 
 ### 3. Primer uso
 

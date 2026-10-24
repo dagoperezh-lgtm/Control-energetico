@@ -33,7 +33,8 @@ create table if not exists public.parametros_perfil (
   vigente_desde   date not null,
   estatura_cm     numeric(5,1) not null,
   formula_basal   text not null default 'harris_benedict'
-                  check (formula_basal in ('harris_benedict','katch_mcardle')),
+                  check (formula_basal in ('harris_benedict','mifflin_st_jeor','katch_mcardle')),
+  ajuste_basal_pct numeric(5,1) not null default 0 check (ajuste_basal_pct between -40 and 40), -- ajuste personal (indicación médica)
   carbos_por_hora numeric(6,1) not null default 40,   -- g/h de entrenamiento
   meta_kcal       numeric(7,1) not null default 1200, -- meta diaria de ingesta
   fc_reposo       int,                                 -- FC mínima / reposo

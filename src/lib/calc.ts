@@ -61,6 +61,15 @@ export function basalHarrisBenedict(sexo: 'M' | 'F', peso: number, estaturaCm: n
 }
 export const basalKatchMcArdle = (masaMagraKg: number) => 370 + 21.6 * masaMagraKg;
 
+/** Mifflin-St Jeor (1990): más precisa que Harris-Benedict en población actual */
+export function basalMifflin(sexo: 'M' | 'F', peso: number, estaturaCm: number, edad: number): number {
+  return 10 * peso + 6.25 * estaturaCm - 5 * edad + (sexo === 'F' ? -161 : 5);
+}
+
+export const NOMBRE_FORMULA: Record<string, string> = {
+  harris_benedict: 'Harris-Benedict', mifflin_st_jeor: 'Mifflin-St Jeor', katch_mcardle: 'Katch-McArdle',
+};
+
 // ---------- zonas de frecuencia cardíaca (Karvonen, como la planilla) ----------
 export function zonasFC(fcReposo: number, fcMax: number) {
   const reserva = fcMax - fcReposo;
@@ -138,6 +147,8 @@ export interface Dia {
   edad: number | null;
   basalHB: number | null;
   basalKM: number | null;
+  basalMS: number | null;
+  ajusteBasalPct: number;
   basal: number | null;
   basalOrigen: 'calculado' | 'planilla' | null;
   ejercicio: number;
@@ -222,8 +233,12 @@ export function calcularDias(e: Entradas, desde: string, hasta: string): Dia[] {
     const edad = edadEn(perfil, p, f);
     const bHB = peso != null && p && edad != null ? basalHarrisBenedict(perfil.sexo, peso, +p.estatura_cm, edad) : null;
     const bKM = masaMagra != null ? basalKatchMcArdle(masaMagra) : null;
+    const bMS = peso != null && p && edad != null ? basalMifflin(perfil.sexo, peso, +p.estatura_cm, edad) : null;
     const basalReg = e.basalRegistrado?.get(f);
-    const basal = basalReg ?? (p?.formula_basal === 'katch_mcardle' ? bKM ?? bHB : bHB ?? bKM);
+    const formula = p?.formula_basal === 'katch_mcardle' ? bKM ?? bHB : p?.formula_basal === 'mifflin_st_jeor' ? bMS ?? bHB : bHB ?? bKM;
+    const ajuste = p?.ajuste_basal_pct ? +p.ajuste_basal_pct : 0;
+    // El ajuste personal se aplica a la fórmula; el basal registrado en la planilla se respeta tal cual
+    const basal = basalReg ?? (formula != null ? formula * (1 + ajuste / 100) : null);
 
     const cons = consumosPorDia.get(f) ?? [];
     const ingesta = cons.reduce((s, c) => s + +c.kcal_unidad * +c.cantidad, 0);
@@ -258,7 +273,7 @@ export function calcularDias(e: Entradas, desde: string, hasta: string): Dia[] {
       varPeso: peso != null && anterior?.peso != null ? peso - anterior.peso : null,
       varAcumulada: peso != null && pesoRef != null ? pesoRef - peso : null,
       ingesta, carbosIngeridos: carbosIng, hayIngesta,
-      edad, basalHB: bHB, basalKM: bKM, basal,
+      edad, basalHB: bHB, basalKM: bKM, basalMS: bMS, ajusteBasalPct: basalReg != null ? 0 : ajuste, basal,
       basalOrigen: basalReg != null ? 'planilla' : basal != null ? 'calculado' : null,
       ejercicio, ejercicioEstimado: estimado, gastoTotal,
       balance: hayIngesta && gastoTotal != null ? ingesta - gastoTotal : null,

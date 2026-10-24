@@ -1,5 +1,5 @@
 export type Sexo = 'M' | 'F';
-export type FormulaBasal = 'harris_benedict' | 'katch_mcardle';
+export type FormulaBasal = 'harris_benedict' | 'mifflin_st_jeor' | 'katch_mcardle';
 export type Comida = 'desayuno' | 'almuerzo' | 'once_cena' | 'colacion' | 'total_dia';
 export type Deporte = 'ciclismo' | 'trote' | 'natacion' | 'otro';
 
@@ -23,6 +23,8 @@ export interface ParametrosPerfil {
   fc_reposo: number | null;
   fc_maxima: number | null;
   edad_fija: number | null;
+  /** Ajuste personal del gasto basal en %, ej. -10 (indicación médica). 0 o null = sin ajuste */
+  ajuste_basal_pct?: number | null;
   nota?: string | null;
 }
 
