@@ -122,3 +122,5 @@ input, select, textarea { font-size: 16px !important; }
 .separador { height: 1px; background: var(--line); margin: 12px 0; }
 .mt { margin-top: 10px; }
 @media (max-width: 420px) { .kpi .v { font-size: 17px; } .grid3 { grid-template-columns: 1fr 1fr; } }
+
+.exito { background: var(--accent-soft); color: var(--accent); padding: 10px 12px; border-radius: 10px; font-size: 13px; }

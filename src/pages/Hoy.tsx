@@ -13,7 +13,7 @@ import { SelectorAlimento } from '../components/SelectorAlimento';
 import { FormActividad, FormMedicion } from '../components/Formularios';
 
 export default function Hoy() {
-  const { diaPorFecha, consumos, actividades, mediciones, alimentos, sesion, recargar, calibracion } = useDatos();
+  const { diaPorFecha, consumos, actividades, mediciones, alimentos, parametros, perfil, sesion, recargar, calibracion } = useDatos();
   const [editCant, setEditCant] = useState<Consumo | null>(null);
   const porcionPorId = useMemo(() => new Map(alimentos.map((a) => [a.id, a.porcion])), [alimentos]);
   const porcionDe = (c: Consumo) => (c.alimento_id ? porcionPorId.get(c.alimento_id) : undefined) ?? null;
@@ -60,6 +60,14 @@ export default function Hoy() {
         </div>
       </div>
 
+      {(!parametros.length || !perfil?.fecha_nacimiento) && (
+        <a href="#/mas" className="aviso" style={{ display: 'block', textDecoration: 'none' }}>
+          Para calcular tu gasto diario, completa tu estatura y fecha de nacimiento en <strong>Más → Mis datos</strong>. ›
+        </a>
+      )}
+      {parametros.length > 0 && perfil?.fecha_nacimiento && !mediciones.length && (
+        <div className="aviso">Registra tu peso con <strong>+ Peso</strong> para calcular tu gasto basal.</div>
+      )}
       <section className="card">
         <h2>Balance del día {calibracion.activa && <span className="chip ok">calibrado ×{n(calibracion.factor, 2)}</span>}</h2>
         <div className="kpis">

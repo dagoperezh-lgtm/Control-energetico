@@ -21,7 +21,7 @@ export default function Mas() {
         <button className="btn chico" onClick={() => sb().auth.signOut()}>Cerrar sesión</button>
       </div>
       <div className="tabs">
-        {([['perfil', 'Perfil y parámetros'], ['alimentos', 'Alimentos'], ['importar', 'Importar planilla']] as [Vista, string][]).map(([k, t]) => (
+        {([['perfil', 'Mis datos'], ['alimentos', 'Alimentos'], ['importar', 'Importar planilla']] as [Vista, string][]).map(([k, t]) => (
           <button key={k} className={vista === k ? 'activo' : ''} onClick={() => setVista(k)}>{t}</button>
         ))}
       </div>
@@ -33,62 +33,145 @@ export default function Mas() {
 }
 
 // ---------------- Perfil ----------------
+/**
+ * Un solo formulario "Mis datos". Internamente cada cambio de estatura, fórmula, meta, ajuste o FC
+ * se guarda con la fecha de hoy (parametros_perfil), de modo que los días anteriores no se recalculan.
+ * El usuario no necesita saber de "vigencias": solo ve sus datos actuales y, si quiere, el historial.
+ */
 function PerfilVista() {
-  const { perfil, parametros, recargar } = useDatos();
-  const [f, setF] = useState<Perfil>(perfil!);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [nuevoParam, setNuevoParam] = useState(false);
-  const vigente = parametrosEn(parametros, hoyLocal());
+  const { perfil, parametros, recargar, sesion } = useDatos();
+  const hoy = hoyLocal();
+  const actual = parametrosEn(parametros, hoy);
+  const ini = () => ({
+    nombre: perfil!.nombre ?? '', sexo: perfil!.sexo, fecha_nacimiento: perfil!.fecha_nacimiento ?? '', inicio_etapa: perfil!.inicio_etapa ?? '',
+    estatura_cm: actual?.estatura_cm != null ? String(+actual.estatura_cm) : '',
+    meta_kcal: actual?.meta_kcal != null ? String(+actual.meta_kcal) : '1500',
+    formula_basal: (actual?.formula_basal ?? 'mifflin_st_jeor') as ParametrosPerfil['formula_basal'],
+    ajuste_basal_pct: actual?.ajuste_basal_pct ? String(+actual.ajuste_basal_pct) : '',
+    nota: actual?.nota && !actual.nota.startsWith('Importado') ? actual.nota : '',
+    carbos_por_hora: actual?.carbos_por_hora != null ? String(+actual.carbos_por_hora) : '40',
+    fc_reposo: actual?.fc_reposo?.toString() ?? '', fc_maxima: actual?.fc_maxima?.toString() ?? '',
+  });
+  const [f, setF] = useState(ini);
+  const [msg, setMsg] = useState<{ t: string; error?: boolean } | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const [verHist, setVerHist] = useState(false);
+  const num = (s: string) => (s.trim() === '' ? null : Number(s.replace(',', '.')));
+  const set = (k: keyof ReturnType<typeof ini>) => (e: { target: { value: string } }) => { setF({ ...f, [k]: e.target.value }); setMsg(null); };
 
   async function guardar() {
-    const { error } = await sb().from('perfiles').update({
-      nombre: f.nombre, sexo: f.sexo, fecha_nacimiento: f.fecha_nacimiento || null, inicio_etapa: f.inicio_etapa || null,
-    }).eq('id', f.id);
-    setMsg(error ? error.message : 'Perfil guardado.');
-    await recargar();
+    const est = num(f.estatura_cm);
+    const meta = num(f.meta_kcal);
+    const aj = num(f.ajuste_basal_pct);
+    if (!est || est < 100 || est > 230) { setMsg({ t: 'Ingresa tu estatura en centímetros (ej.: 167).', error: true }); return; }
+    if (!f.fecha_nacimiento) { setMsg({ t: 'Ingresa tu fecha de nacimiento: se usa para calcular tu gasto basal.', error: true }); return; }
+    if (meta == null || !Number.isFinite(meta) || meta < 500) { setMsg({ t: 'Ingresa una meta diaria de calorías válida.', error: true }); return; }
+    if (aj != null && (!Number.isFinite(aj) || aj < -40 || aj > 40)) { setMsg({ t: 'El ajuste debe estar entre −40 % y +40 %.', error: true }); return; }
+    setGuardando(true);
+    try {
+      const r1 = await sb().from('perfiles').update({
+        nombre: f.nombre.trim(), sexo: f.sexo, fecha_nacimiento: f.fecha_nacimiento || null, inicio_etapa: f.inicio_etapa || null,
+      }).eq('id', perfil!.id);
+      if (r1.error) throw r1.error;
+
+      const nuevo = {
+        estatura_cm: est, formula_basal: f.formula_basal, meta_kcal: meta, ajuste_basal_pct: aj ?? 0,
+        carbos_por_hora: num(f.carbos_por_hora) ?? 40, fc_reposo: num(f.fc_reposo), fc_maxima: num(f.fc_maxima),
+        nota: f.nota.trim() || null,
+        // La edad se calcula desde la fecha de nacimiento; la edad fija solo existe en datos importados
+        edad_fija: null,
+      };
+      const igual = actual && (['estatura_cm', 'formula_basal', 'meta_kcal', 'ajuste_basal_pct', 'carbos_por_hora', 'fc_reposo', 'fc_maxima'] as const)
+        .every((k) => String(actual[k] ?? '') === String(nuevo[k] ?? '') || (k === 'ajuste_basal_pct' && !actual[k] && !nuevo[k]))
+        && !actual.edad_fija && (actual.nota ?? null) === nuevo.nota;
+      if (!igual) {
+        const r2 = await sb().from('parametros_perfil').upsert({ ...nuevo, usuario_id: sesion!.user.id, vigente_desde: hoy }, { onConflict: 'usuario_id,vigente_desde' });
+        if (r2.error) throw r2.error;
+      }
+      await recargar();
+      setMsg({ t: igual ? 'Datos guardados.' : 'Datos guardados. Los cambios rigen desde hoy; tus días anteriores no se modifican.' });
+    } catch (e: any) {
+      const m = e.message ?? String(e);
+      setMsg({ t: /ajuste_basal_pct|mifflin|check constraint/i.test(m) ? 'Falta actualizar la base de datos (migracion-002.sql en Supabase).' : m, error: true });
+    } finally { setGuardando(false); }
   }
+
+  const edad = f.fecha_nacimiento ? (() => {
+    const [y, m, d] = f.fecha_nacimiento.split('-').map(Number); const [hy, hm, hd] = hoy.split('-').map(Number);
+    return hy - y - (hm < m || (hm === m && hd < d) ? 1 : 0);
+  })() : null;
 
   return (
     <>
+      {!actual && <div className="aviso">Completa tus datos para que la app calcule tu gasto diario.</div>}
       <section className="card">
-        <h2>Datos personales</h2>
+        <h2>Mis datos</h2>
         <div className="grid2">
-          <label className="campo">Nombre<input type="text" value={f.nombre} onChange={(e) => setF({ ...f, nombre: e.target.value })} /></label>
-          <label className="campo">Sexo (fórmulas de basal)
-            <select value={f.sexo} onChange={(e) => setF({ ...f, sexo: e.target.value as 'M' | 'F' })}><option value="M">Hombre</option><option value="F">Mujer</option></select>
+          <label className="campo">Nombre<input type="text" value={f.nombre} onChange={set('nombre')} /></label>
+          <label className="campo">Sexo
+            <select value={f.sexo} onChange={set('sexo')}><option value="M">Hombre</option><option value="F">Mujer</option></select>
           </label>
-          <label className="campo">Fecha de nacimiento<input type="date" value={f.fecha_nacimiento ?? ''} onChange={(e) => setF({ ...f, fecha_nacimiento: e.target.value })} /></label>
-          <label className="campo">Inicio de etapa (ref. variación acumulada)<input type="date" value={f.inicio_etapa ?? ''} onChange={(e) => setF({ ...f, inicio_etapa: e.target.value })} /></label>
+          <label className="campo">Fecha de nacimiento<input type="date" value={f.fecha_nacimiento} onChange={set('fecha_nacimiento')} /></label>
+          <label className="campo">Estatura (cm)<input type="number" inputMode="decimal" value={f.estatura_cm} onChange={set('estatura_cm')} placeholder="Ej.: 167" /></label>
         </div>
-        {msg && <p className="sub">{msg}</p>}
-        <button className="btn primario mt" onClick={guardar}>Guardar</button>
+        {edad != null && <p className="sub">Edad: {edad} años (se actualiza sola en cada cumpleaños).</p>}
+
+        <h3>Mi objetivo</h3>
+        <div className="grid2">
+          <label className="campo">Meta diaria de calorías<input type="number" inputMode="numeric" value={f.meta_kcal} onChange={set('meta_kcal')} /></label>
+          <label className="campo">Medir mi avance desde<input type="date" value={f.inicio_etapa} onChange={set('inicio_etapa')} /></label>
+        </div>
+        <p className="sub">"Medir mi avance desde" es la fecha que se usa para mostrar cuántos kilos has bajado o subido.</p>
+
+        <details className="mt">
+          <summary className="sub" style={{ cursor: 'pointer' }}>Opciones avanzadas</summary>
+          <label className="campo mt">Cómo calcular mi gasto basal
+            <select value={f.formula_basal} onChange={set('formula_basal')}>
+              <option value="mifflin_st_jeor">Recomendado (Mifflin-St Jeor)</option>
+              <option value="harris_benedict">Clásico (Harris-Benedict)</option>
+              <option value="katch_mcardle">Según masa magra (Katch-McArdle) · requiere % de grasa</option>
+            </select>
+          </label>
+          <div className="grid2 mt">
+            <label className="campo">Ajuste indicado por profesional (%)<input type="number" inputMode="decimal" value={f.ajuste_basal_pct} onChange={set('ajuste_basal_pct')} placeholder="Ej.: −10" /></label>
+            <label className="campo">Motivo (opcional)<input type="text" maxLength={80} value={f.nota} onChange={set('nota')} /></label>
+          </div>
+          <p className="sub">Solo si tu médico o nutricionista te indicó que tu gasto es mayor o menor al normal (por ejemplo, por la tiroides o un medicamento). Si no, déjalo vacío.</p>
+          <div className="grid3 mt">
+            <label className="campo">FC en reposo<input type="number" inputMode="numeric" value={f.fc_reposo} onChange={set('fc_reposo')} /></label>
+            <label className="campo">FC máxima<input type="number" inputMode="numeric" value={f.fc_maxima} onChange={set('fc_maxima')} /></label>
+            <label className="campo">Carbos por hora de entreno (g)<input type="number" inputMode="numeric" value={f.carbos_por_hora} onChange={set('carbos_por_hora')} /></label>
+          </div>
+        </details>
+
+        {msg && <div className={msg.error ? 'error mt' : 'exito mt'}>{msg.t}</div>}
+        <button className="btn primario mt" onClick={guardar} disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar'}</button>
       </section>
 
-      <section className="card">
-        <h2>Parámetros con vigencia <button className="btn chico" onClick={() => setNuevoParam(true)}>+ Nueva vigencia</button></h2>
-        <p className="sub" style={{ marginTop: 0 }}>
-          Cada día se calcula con los parámetros vigentes en esa fecha. Un cambio no altera los días anteriores. Si se fija "edad", se usa en vez de la fecha de nacimiento.
-        </p>
-        <div className="tabla-wrap">
-          <table className="tabla">
-            <thead><tr><th>Desde</th><th>Estatura</th><th>Fórmula basal</th><th>Ajuste</th><th>Edad fija</th><th>Carbos/h</th><th>Meta kcal</th><th>FC reposo</th><th>FC máx</th></tr></thead>
-            <tbody>
-              {[...parametros].reverse().map((p) => (
-                <tr key={p.id}>
-                  <td>{fechaCorta(p.vigente_desde)} {p === vigente && <span className="chip ok">vigente</span>}</td>
-                  <td>{n(+p.estatura_cm, 1)} cm</td>
-                  <td>{NOMBRE_FORMULA[p.formula_basal] ?? p.formula_basal}</td>
-                  <td title={p.nota ?? ''}>{p.ajuste_basal_pct ? `${p.ajuste_basal_pct > 0 ? '+' : ''}${n(+p.ajuste_basal_pct, 1)} %` : '—'}</td>
-                  <td>{p.edad_fija ?? '—'}</td><td>{n(+p.carbos_por_hora)} g</td><td>{n(+p.meta_kcal)}</td>
-                  <td>{p.fc_reposo ?? '—'}</td><td>{p.fc_maxima ?? '—'}</td>
-                </tr>
-              ))}
-              {!parametros.length && <tr><td colSpan={9} className="vacio">Defina sus parámetros para que la app calcule el gasto basal.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </section>
-      {nuevoParam && <FormParametros base={vigente} onCerrar={() => setNuevoParam(false)} />}
+      {parametros.length > 1 && (
+        <section className="card">
+          <h2>Historial de mis datos <button className="btn chico" onClick={() => setVerHist(!verHist)}>{verHist ? 'Ocultar' : 'Ver'}</button></h2>
+          <p className="sub" style={{ marginTop: 0 }}>Cada día se calcula con los datos que tenías en esa fecha.</p>
+          {verHist && (
+            <div className="tabla-wrap">
+              <table className="tabla">
+                <thead><tr><th>Desde</th><th>Estatura</th><th>Meta</th><th>Cálculo</th><th>Ajuste</th><th>Edad</th></tr></thead>
+                <tbody>
+                  {[...parametros].reverse().map((p) => (
+                    <tr key={p.id}>
+                      <td>{fechaCorta(p.vigente_desde)} {p === actual && <span className="chip ok">actual</span>}</td>
+                      <td>{n(+p.estatura_cm)} cm</td><td>{n(+p.meta_kcal)}</td>
+                      <td>{NOMBRE_FORMULA[p.formula_basal] ?? p.formula_basal}</td>
+                      <td>{p.ajuste_basal_pct ? `${+p.ajuste_basal_pct > 0 ? '+' : ''}${n(+p.ajuste_basal_pct, 1)} %` : '—'}</td>
+                      <td>{p.edad_fija ? `${p.edad_fija} (fija)` : 'por fecha nac.'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="card">
         <h2>Conexión</h2>
@@ -96,74 +179,6 @@ function PerfilVista() {
         {!import.meta.env.VITE_SUPABASE_URL && <button className="btn chico" onClick={() => { borrarConfig(); location.reload(); }}>Cambiar proyecto Supabase</button>}
       </section>
     </>
-  );
-}
-
-function FormParametros({ base, onCerrar }: { base: ParametrosPerfil | null; onCerrar: () => void }) {
-  const { sesion, recargar } = useDatos();
-  const [f, setF] = useState({
-    vigente_desde: hoyLocal(), estatura_cm: String(base?.estatura_cm ?? ''), formula_basal: base?.formula_basal ?? 'harris_benedict',
-    edad_fija: base?.edad_fija?.toString() ?? '', carbos_por_hora: String(base?.carbos_por_hora ?? 40), meta_kcal: String(base?.meta_kcal ?? 1200),
-    fc_reposo: base?.fc_reposo?.toString() ?? '', fc_maxima: base?.fc_maxima?.toString() ?? '',
-    ajuste_basal_pct: base?.ajuste_basal_pct ? String(base.ajuste_basal_pct) : '', nota: base?.nota && !base.nota.startsWith('Importado') ? base.nota : '',
-  });
-  const [msg, setMsg] = useState<string | null>(null);
-  const num = (s: string) => (s.trim() === '' ? null : +s.replace(',', '.'));
-  async function guardar() {
-    if (!num(f.estatura_cm)) { setMsg('Ingrese la estatura.'); return; }
-    const aj = num(f.ajuste_basal_pct);
-    if (aj != null && (!Number.isFinite(aj) || aj < -40 || aj > 40)) { setMsg('El ajuste del basal debe estar entre −40 % y +40 %.'); return; }
-    const { error } = await sb().from('parametros_perfil').upsert({
-      usuario_id: sesion!.user.id, vigente_desde: f.vigente_desde, estatura_cm: num(f.estatura_cm), formula_basal: f.formula_basal,
-      edad_fija: num(f.edad_fija), carbos_por_hora: num(f.carbos_por_hora) ?? 40, meta_kcal: num(f.meta_kcal) ?? 1200,
-      fc_reposo: num(f.fc_reposo), fc_maxima: num(f.fc_maxima),
-      ajuste_basal_pct: aj ?? 0, nota: f.nota.trim() || null,
-    }, { onConflict: 'usuario_id,vigente_desde' });
-    if (error) {
-      setMsg(/ajuste_basal_pct|mifflin|check constraint/i.test(error.message)
-        ? 'Falta actualizar la base de datos: ejecute supabase/migracion-002.sql en el SQL Editor de Supabase.'
-        : error.message);
-      return;
-    }
-    await recargar();
-    onCerrar();
-  }
-  const campo = (k: keyof typeof f, t: string, tipo = 'number') => (
-    <label className="campo">{t}<input type={tipo} inputMode={tipo === 'number' ? 'decimal' : undefined} value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} /></label>
-  );
-  return (
-    <Modal titulo="Nueva vigencia de parámetros" onCerrar={onCerrar}>
-      <div className="grid2">
-        {campo('vigente_desde', 'Vigente desde', 'date')}
-        {campo('estatura_cm', 'Estatura (cm)')}
-        <label className="campo">Fórmula de gasto basal
-          <select value={f.formula_basal} onChange={(e) => setF({ ...f, formula_basal: e.target.value as any })}>
-            <option value="mifflin_st_jeor">Mifflin-St Jeor (recomendada)</option>
-            <option value="harris_benedict">Harris-Benedict (peso total)</option>
-            <option value="katch_mcardle">Katch-McArdle (masa magra)</option>
-          </select>
-        </label>
-        {campo('edad_fija', 'Edad fija (opcional)')}
-        {campo('carbos_por_hora', 'Carbos por hora de entreno (g)')}
-        {campo('meta_kcal', 'Meta diaria de ingesta (kcal)')}
-        {campo('fc_reposo', 'FC reposo (ppm)')}
-        {campo('fc_maxima', 'FC máxima (ppm)')}
-      </div>
-      <h3>Ajuste personal del gasto basal</h3>
-      <div className="grid2">
-        {campo('ajuste_basal_pct', 'Ajuste (%), ej. −10')}
-        <label className="campo">Motivo (opcional, privado)<input type="text" value={f.nota} maxLength={80} placeholder="Ej.: indicación nutricionista" onChange={(e) => setF({ ...f, nota: e.target.value })} /></label>
-      </div>
-      <p className="sub">
-        Úselo para una corrección indicada por su médico o nutricionista (por ejemplo, por una condición tiroidea o un medicamento).
-        Negativo baja el basal; positivo lo sube. Si no tiene una indicación, déjelo vacío y use la autocalibración en Progreso → Cierre semanal, que mide el gasto real con la balanza.
-      </p>
-      <p className="sub">
-        Fórmulas: Mifflin-St Jeor y Harris-Benedict usan peso, estatura, edad y sexo. Katch-McArdle usa la masa magra y es más fiel cuando el % de grasa se mide con regularidad.
-      </p>
-      {msg && <div className="error">{msg}</div>}
-      <button className="btn primario mt" onClick={guardar}>Guardar</button>
-    </Modal>
   );
 }
 
