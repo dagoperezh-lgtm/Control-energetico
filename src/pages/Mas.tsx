@@ -32,6 +32,14 @@ export default function Mas() {
   );
 }
 
+const FC_REPOSO_SUGERIDA = 65;
+const NIVELES_CARBOS: { id: string; nombre: string; g: number | null; ejemplo: string }[] = [
+  { id: 'suave', nombre: 'Suave', g: 30, ejemplo: 'Caminata, bicicleta tranquila' },
+  { id: 'moderado', nombre: 'Moderado', g: 40, ejemplo: 'Trote o pedaleo sostenido' },
+  { id: 'intenso', nombre: 'Intenso', g: 60, ejemplo: 'Series, competencias, fondo exigente' },
+  { id: 'personal', nombre: 'Personalizado', g: null, ejemplo: 'Si conoces tu propio valor' },
+];
+
 // ---------------- Perfil ----------------
 /**
  * Un solo formulario "Mis datos". Internamente cada cambio de estatura, fórmula, meta, ajuste o FC
@@ -58,6 +66,15 @@ function PerfilVista() {
   const [verHist, setVerHist] = useState(false);
   const num = (s: string) => (s.trim() === '' ? null : Number(s.replace(',', '.')));
   const set = (k: keyof ReturnType<typeof ini>) => (e: { target: { value: string } }) => { setF({ ...f, [k]: e.target.value }); setMsg(null); };
+  // Ajuste: se maneja con botones (signo + magnitud en pasos de 5 %)
+  const ajusteNum = Math.round(num(f.ajuste_basal_pct) ?? 0);
+  const sentidoAjuste: 'no' | 'menor' | 'mayor' = ajusteNum < 0 ? 'menor' : ajusteNum > 0 ? 'mayor' : 'no';
+  const signoAjuste = ajusteNum < 0 ? -1 : 1;
+  const magnitudAjuste = Math.abs(ajusteNum);
+  const setAjuste = (v: number) => { setF({ ...f, ajuste_basal_pct: v ? String(v) : '' }); setMsg(null); };
+  // Carbohidratos por hora: niveles de referencia o valor personalizado
+  const [nivelPersonal, setNivelPersonal] = useState(false);
+  const nivelCarbos = nivelPersonal ? 'personal' : (NIVELES_CARBOS.find((x) => x.g != null && String(x.g) === f.carbos_por_hora)?.id ?? 'personal');
 
   async function guardar() {
     const est = num(f.estatura_cm);
@@ -77,7 +94,7 @@ function PerfilVista() {
       const nuevo = {
         estatura_cm: est, formula_basal: f.formula_basal, meta_kcal: meta, ajuste_basal_pct: aj ?? 0,
         carbos_por_hora: num(f.carbos_por_hora) ?? 40, fc_reposo: num(f.fc_reposo), fc_maxima: num(f.fc_maxima),
-        nota: f.nota.trim() || null,
+        nota: aj ? f.nota.trim() || null : null,
         // La edad se calcula desde la fecha de nacimiento; la edad fija solo existe en datos importados
         edad_fija: null,
       };
@@ -100,6 +117,8 @@ function PerfilVista() {
     const [y, m, d] = f.fecha_nacimiento.split('-').map(Number); const [hy, hm, hd] = hoy.split('-').map(Number);
     return hy - y - (hm < m || (hm === m && hd < d) ? 1 : 0);
   })() : null;
+
+  const fcMaxSugerida = edad != null && edad > 10 ? Math.round(208 - 0.7 * edad) : null;
 
   return (
     <>
@@ -132,16 +151,77 @@ function PerfilVista() {
               <option value="katch_mcardle">Según masa magra (Katch-McArdle) · requiere % de grasa</option>
             </select>
           </label>
-          <div className="grid2 mt">
-            <label className="campo">Ajuste indicado por profesional (%)<input type="number" inputMode="decimal" value={f.ajuste_basal_pct} onChange={set('ajuste_basal_pct')} placeholder="Ej.: −10" /></label>
-            <label className="campo">Motivo (opcional)<input type="text" maxLength={80} value={f.nota} onChange={set('nota')} /></label>
+          <p className="sub">Recomendado sirve para la mayoría. Según masa magra es más preciso si mides tu % de grasa con regularidad.</p>
+
+          {/* ---- Ajuste del gasto: botones, sin teclado (el teclado numérico del iPhone no tiene signo menos) ---- */}
+          <h3>Ajuste de tu gasto (solo con indicación profesional)</h3>
+          <div className="segmentado">
+            {([['no', 'Sin ajuste'], ['menor', 'Gasto menor'], ['mayor', 'Gasto mayor']] as const).map(([k, t]) => (
+              <button key={k} type="button" className={sentidoAjuste === k ? 'activo' : ''}
+                onClick={() => setAjuste(k === 'no' ? 0 : (k === 'menor' ? -1 : 1) * (magnitudAjuste || 10))}>{t}</button>
+            ))}
           </div>
-          <p className="sub">Solo si tu médico o nutricionista te indicó que tu gasto es mayor o menor al normal (por ejemplo, por la tiroides o un medicamento). Si no, déjalo vacío.</p>
-          <div className="grid3 mt">
-            <label className="campo">FC en reposo<input type="number" inputMode="numeric" value={f.fc_reposo} onChange={set('fc_reposo')} /></label>
-            <label className="campo">FC máxima<input type="number" inputMode="numeric" value={f.fc_maxima} onChange={set('fc_maxima')} /></label>
-            <label className="campo">Carbos por hora de entreno (g)<input type="number" inputMode="numeric" value={f.carbos_por_hora} onChange={set('carbos_por_hora')} /></label>
+          {sentidoAjuste !== 'no' && (
+            <>
+              <div className="fila mt" style={{ justifyContent: 'center', gap: 14 }}>
+                <button type="button" className="btn redondo" aria-label="Menos" disabled={magnitudAjuste <= 5}
+                  onClick={() => setAjuste(signoAjuste * (magnitudAjuste - 5))}>−</button>
+                <span className="valor-grande">{magnitudAjuste} %</span>
+                <button type="button" className="btn redondo" aria-label="Más" disabled={magnitudAjuste >= 40}
+                  onClick={() => setAjuste(signoAjuste * (magnitudAjuste + 5))}>+</button>
+              </div>
+              <p className="exito mt" style={{ textAlign: 'center' }}>
+                Tu gasto basal se calculará {magnitudAjuste} % más {sentidoAjuste === 'menor' ? 'bajo' : 'alto'} que lo normal.
+              </p>
+              <label className="campo mt">Motivo (opcional)<input type="text" maxLength={80} value={f.nota} onChange={set('nota')} placeholder="Ej.: indicación de mi nutricionista" /></label>
+            </>
+          )}
+          <p className="sub">Úsalo solo si tu médico o nutricionista te indicó que tu gasto es distinto al normal (por ejemplo, por la tiroides o un medicamento).</p>
+
+          {/* ---- Frecuencia cardíaca ---- */}
+          <h3>Frecuencia cardíaca (opcional)</h3>
+          <p className="sub" style={{ marginTop: 0 }}>Se usa solo para calcular tus zonas de entrenamiento en la pestaña Entreno.</p>
+          <div className="grid2">
+            <div>
+              <label className="campo">En reposo (latidos por minuto)
+                <input type="number" inputMode="numeric" value={f.fc_reposo} onChange={set('fc_reposo')} placeholder={`Sugerido: ${FC_REPOSO_SUGERIDA}`} />
+              </label>
+              {String(FC_REPOSO_SUGERIDA) !== f.fc_reposo && (
+                <button type="button" className="btn texto chico" onClick={() => { setF({ ...f, fc_reposo: String(FC_REPOSO_SUGERIDA) }); setMsg(null); }}>Usar sugerido ({FC_REPOSO_SUGERIDA})</button>
+              )}
+            </div>
+            <div>
+              <label className="campo">Máxima (latidos por minuto)
+                <input type="number" inputMode="numeric" value={f.fc_maxima} onChange={set('fc_maxima')} placeholder={fcMaxSugerida ? `Sugerido: ${fcMaxSugerida}` : ''} />
+              </label>
+              {fcMaxSugerida != null && String(fcMaxSugerida) !== f.fc_maxima && (
+                <button type="button" className="btn texto chico" onClick={() => { setF({ ...f, fc_maxima: String(fcMaxSugerida) }); setMsg(null); }}>Usar sugerido ({fcMaxSugerida})</button>
+              )}
+            </div>
           </div>
+          <ul className="ayuda">
+            <li><strong>En reposo:</strong> tus latidos por minuto al despertar, antes de levantarte. Cuenta tu pulso durante 60 segundos o revísala en tu reloj o en la app Salud del iPhone. Típico en adultos: 60–80; en personas entrenadas: 45–60.</li>
+            <li><strong>Máxima:</strong> la más alta que alcanzas en un esfuerzo máximo. {fcMaxSugerida != null
+              ? <>El sugerido ({fcMaxSugerida}) se estima con tu edad: 208 − 0,7 × {edad}.</>
+              : <>Ingresa tu fecha de nacimiento para ver un valor sugerido.</>}</li>
+          </ul>
+
+          {/* ---- Carbohidratos por hora ---- */}
+          <h3>Carbohidratos al entrenar</h3>
+          <p className="sub" style={{ marginTop: 0 }}>Estimación de los carbohidratos que tu cuerpo usa por cada hora de ejercicio. Sirve para el balance de carbohidratos del día.</p>
+          <div className="opciones-carbos">
+            {NIVELES_CARBOS.map((nv) => (
+              <button key={nv.id} type="button" className={`opcion${nivelCarbos === nv.id ? ' activo' : ''}`}
+                onClick={() => { setNivelPersonal(nv.id === 'personal'); if (nv.g != null) setF({ ...f, carbos_por_hora: String(nv.g) }); setMsg(null); }}>
+                <strong>{nv.nombre}{nv.g != null ? ` · ${nv.g} g/h` : ''}</strong>
+                <span className="sub">{nv.ejemplo}</span>
+              </button>
+            ))}
+          </div>
+          {nivelCarbos === 'personal' && (
+            <label className="campo mt">Gramos por hora<input type="number" inputMode="numeric" value={f.carbos_por_hora} onChange={set('carbos_por_hora')} /></label>
+          )}
+          <p className="sub">Son valores de referencia: el consumo real depende de la intensidad y de tu estado físico.</p>
         </details>
 
         {msg && <div className={msg.error ? 'error mt' : 'exito mt'}>{msg.t}</div>}
