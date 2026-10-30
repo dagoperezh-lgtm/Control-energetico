@@ -5,5 +5,6 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   base: './',
   plugins: [react()],
-  build: { chunkSizeWarningLimit: 1500 },
+  // Compatibilidad con iPhone con iOS 15 o superior
+  build: { chunkSizeWarningLimit: 1500, target: ['es2020', 'safari15'] },
 });

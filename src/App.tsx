@@ -3,6 +3,7 @@ import { HashRouter, NavLink, Route, Routes } from 'react-router-dom';
 import { guardarConfig, leerConfig, sb } from './lib/supabase';
 import { ProveedorDatos, useDatos } from './lib/datos';
 import { Icono } from './components/ui';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import Hoy from './pages/Hoy';
 import Progreso from './pages/Progreso';
 import Historial from './pages/Historial';
@@ -28,11 +29,11 @@ function Puerta() {
       <main className="app">
         {error && <div className="error">{error}</div>}
         <Routes>
-          <Route path="/" element={<Hoy />} />
-          <Route path="/progreso" element={<Progreso />} />
-          <Route path="/historial" element={<Historial />} />
-          <Route path="/entreno" element={<Entreno />} />
-          <Route path="/mas" element={<Mas />} />
+          <Route path="/" element={<ErrorBoundary key="/" nombre="Hoy"><Hoy /></ErrorBoundary>} />
+          <Route path="/progreso" element={<ErrorBoundary key="/progreso" nombre="Progreso"><Progreso /></ErrorBoundary>} />
+          <Route path="/historial" element={<ErrorBoundary key="/historial" nombre="Historial"><Historial /></ErrorBoundary>} />
+          <Route path="/entreno" element={<ErrorBoundary key="/entreno" nombre="Entreno"><Entreno /></ErrorBoundary>} />
+          <Route path="/mas" element={<ErrorBoundary key="/mas" nombre="Más"><Mas /></ErrorBoundary>} />
         </Routes>
       </main>
       <nav className="nav">
