@@ -13,8 +13,8 @@ import type { Actividad, Consumo, Deporte, Medicion, ParametrosPerfil, Perfil } 
 export const KCAL_POR_KG = 7700;
 /** Brechas entre pesajes mayores a esto no se interpolan (quedan sin peso) */
 export const MAX_DIAS_INTERPOLACION = 21;
-/** Días que se arrastra el último peso conocido si no hay pesaje posterior */
-export const MAX_DIAS_ARRASTRE = 7;
+/** Días que se usa el último peso conocido cuando no hay un pesaje más reciente (para no perder el gasto basal) */
+export const MAX_DIAS_ARRASTRE = 90;
 const DIA_MS = 86_400_000;
 
 // ---------- fechas (YYYY-MM-DD, sin zona horaria) ----------

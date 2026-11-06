@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { useDatos } from '../lib/datos';
 import { sb } from '../lib/supabase';
-import { hoyLocal, kcalActividad, modeloEjercicio, sumarDias } from '../lib/calc';
+import { diffDias, hoyLocal, kcalActividad, MAX_DIAS_ARRASTRE, modeloEjercicio, sumarDias } from '../lib/calc';
 import { useMemo } from 'react';
 import { fraccion, PORCION_BASE, siguiente, textoCantidad } from '../lib/porciones';
 import { SelectorCantidad } from '../components/Cantidad';
 import { Modal } from '../components/ui';
 import { COMIDAS, DEPORTES, type Actividad, type Comida, type Consumo } from '../lib/types';
-import { fechaLarga, horasMin, n, ns } from '../lib/formato';
+import { fechaCorta, fechaLarga, horasMin, n, ns } from '../lib/formato';
 import { Kpi } from '../components/ui';
 import { SelectorAlimento } from '../components/SelectorAlimento';
 import { FormActividad, FormMedicion } from '../components/Formularios';
@@ -24,6 +24,8 @@ export default function Hoy() {
   const [ocupado, setOcupado] = useState(false);
 
   const modelo = useMemo(() => modeloEjercicio(actividades), [actividades]);
+  const ultimoPesaje = useMemo(() => [...mediciones].filter((m) => m.fecha <= fecha && m.origen !== 'interpolado').sort((x, y) => y.fecha.localeCompare(x.fecha))[0], [mediciones, fecha]);
+  const diasSinPesaje = ultimoPesaje ? diffDias(ultimoPesaje.fecha, fecha) : null;
   const dia = diaPorFecha.get(fecha);
   const delDia = consumos.filter((c) => c.fecha === fecha);
   const actsDia = actividades.filter((a) => a.fecha === fecha);
@@ -65,6 +67,12 @@ export default function Hoy() {
           Para calcular tu gasto diario, completa tu estatura y fecha de nacimiento en <strong>Más → Mis datos</strong>. ›
         </a>
       )}
+      {parametros.length > 0 && perfil?.fecha_nacimiento && mediciones.length > 0 && dia?.peso == null && (
+        <div className="aviso">Tu último peso es de hace más de {MAX_DIAS_ARRASTRE} días. Registra tu peso con <strong>+ Peso</strong> para calcular tu gasto basal.</div>
+      )}
+      {dia?.peso != null && diasSinPesaje != null && diasSinPesaje >= 7 && (
+        <div className="aviso">Hace {diasSinPesaje} días que no registras tu peso; el cálculo usa el último ({n(+ultimoPesaje!.peso_kg, 1)} kg). Pésate para mantenerlo al día.</div>
+      )}
       {parametros.length > 0 && perfil?.fecha_nacimiento && !mediciones.length && (
         <div className="aviso">Registra tu peso con <strong>+ Peso</strong> para calcular tu gasto basal.</div>
       )}
@@ -94,7 +102,7 @@ export default function Hoy() {
           <button className="btn chico" onClick={() => setMedForm(true)}>{medicion ? 'Editar' : '+ Peso'}</button>
         </h2>
         <div className="kpis">
-          <Kpi valor={n(dia?.peso, 1)} etiqueta={`kg${dia?.pesoOrigen && dia.pesoOrigen !== 'medido' ? ` (${dia.pesoOrigen})` : ''}`} />
+          <Kpi valor={n(dia?.peso, 1)} etiqueta={dia?.pesoOrigen === 'arrastrado' && ultimoPesaje ? `kg · último pesaje ${fechaCorta(ultimoPesaje.fecha).replace(/ \d{4}$/, '')}` : `kg${dia?.pesoOrigen === 'interpolado' ? ' (estimado)' : ''}`} />
           <Kpi valor={dia?.grasaPct == null ? '—' : `${n(dia.grasaPct, 1)} %`} etiqueta={`grasa · ${n(dia?.grasaKg, 1)} kg`} />
           <Kpi valor={n(dia?.imc, 1)} etiqueta={`IMC · magra ${n(dia?.masaMagra, 1)} kg`} />
         </div>
