@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   Chart as ChartJS, LineElement, PointElement, BarElement, LinearScale, TimeScale, Tooltip, Legend, Filler,
+  LineController, BarController,
 } from 'chart.js';
 import 'chartjs-adapter-date-fns';
 import { es } from 'date-fns/locale';
@@ -10,7 +11,8 @@ import { hoyLocal, KCAL_POR_KG, sumarDias } from '../lib/calc';
 import { fechaCorta, n, ns } from '../lib/formato';
 import { Kpi } from '../components/ui';
 
-ChartJS.register(LineElement, PointElement, BarElement, LinearScale, TimeScale, Tooltip, Legend, Filler);
+// Los controladores de línea y barra deben registrarse explícitamente: el build de producción elimina lo no registrado
+ChartJS.register(LineController, BarController, LineElement, PointElement, BarElement, LinearScale, TimeScale, Tooltip, Legend, Filler);
 ChartJS.defaults.locale = 'es-CL';
 
 const RANGOS = [['30', '30 días'], ['90', '90 días'], ['365', '1 año'], ['todo', 'Todo']] as const;
